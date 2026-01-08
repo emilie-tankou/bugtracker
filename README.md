@@ -40,7 +40,7 @@ Front-end
 Back-end
 Infrastructure
 
-🛠️ Technologies Utilisées
+Technologies Utilisées
 
 Backend: PHP 7.4+
 Base de données: MySQL / MariaDB
@@ -77,11 +77,11 @@ phpdefine('DB_HOST', 'localhost');
 define('DB_NAME', 'bugtracker');
 define('DB_USER', 'root');
 define('DB_PASS', '');
-define('BASE_URL', 'http://localhost/bugtracker');
+define('BASE_URL', 'http://localhost/projetbt/bugtracker');
 3. Lancement
 
 Placer les fichiers dans le répertoire web (htdocs, www, public_html)
-Accéder à l'application via navigateur: http://localhost/bugtracker
+Accéder à l'application via navigateur: http://localhost/projetbt/bugtracker
 
 Compte par Défaut
 

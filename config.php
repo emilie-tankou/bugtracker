@@ -12,7 +12,7 @@ define('DB_PASS', '');
 define('DB_CHARSET', 'utf8mb4');
 
 // Application configuration
-define('BASE_URL', 'http://localhost/bugtracker');
+define('BASE_URL', 'http://localhost/projetbt/bugtracker');
 define('SITE_NAME', 'BugTracker');
 
 // Session configuration
