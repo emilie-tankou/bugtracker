@@ -13,20 +13,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password_confirm = $_POST['password_confirm'] ?? '';
     
     // Validate inputs
+    if (!isCsrfValid()) {
+        $errors[] = "Your session has expired, please try again";
+    }
+
     if (empty($name)) {
         $errors[] = "Name is required";
+    } elseif (mb_strlen($name) > 100) {
+        $errors[] = "Name must be 100 characters or fewer";
     }
     
     if (empty($email)) {
         $errors[] = "Email is required";
-    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL) || mb_strlen($email) > 150) {
         $errors[] = "Invalid email format";
     }
     
     if (empty($password)) {
         $errors[] = "Password is required";
-    } elseif (strlen($password) < 6) {
-        $errors[] = "Password must be at least 6 characters";
+    } elseif (strlen($password) < 8) {
+        $errors[] = "Password must be at least 8 characters";
     }
     
     if ($password !== $password_confirm) {
@@ -93,6 +99,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php endif; ?>
             
             <form method="POST" action="" class="auth-form">
+                <?php echo csrfField(); ?>
                 <div class="form-group">
                     <label for="name">Name</label>
                     <input 
@@ -121,6 +128,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         type="password" 
                         id="password" 
                         name="password" 
+                        minlength="8"
                         required
                     >
                 </div>

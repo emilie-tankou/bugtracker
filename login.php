@@ -9,7 +9,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
     
-    if (empty($email) || empty($password)) {
+    if (!isCsrfValid()) {
+        $error = "Your session has expired, please try again";
+    } elseif (empty($email) || empty($password)) {
         $error = "Email and password are required";
     } else {
         $db = getDbConnection();
@@ -18,7 +20,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $user = $stmt->fetch();
         
         if ($user && password_verify($password, $user['password'])) {
-            // Login successful
+            // Login successful: new session id to prevent session fixation
+            session_regenerate_id(true);
             $_SESSION['user_id'] = $user['id'];
             header('Location: dashboard.php');
             exit;
@@ -52,6 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php endif; ?>
             
             <form method="POST" action="" class="auth-form">
+                <?php echo csrfField(); ?>
                 <div class="form-group">
                     <label for="email">Email</label>
                     <input 

@@ -1,86 +1,64 @@
 <?php
 require_once 'config.php';
-requireAuth();
 
-header('Content-Type: application/json');
+header('Content-Type: application/json; charset=utf-8');
+header('X-Content-Type-Options: nosniff');
 
-$db = getDbConnection();
-$response = ['success' => false, 'message' => ''];
-
-// Handle status update
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
-    
-    if ($_POST['action'] === 'update_status') {
-        $ticket_id = $_POST['ticket_id'] ?? 0;
-        $status = $_POST['status'] ?? '';
-        
-        // Validate inputs
-        if (empty($ticket_id) || $status === '') {
-            $response['message'] = 'Invalid parameters';
-            echo json_encode($response);
-            exit;
-        }
-        
-        // Check if ticket exists
-        $stmt = $db->prepare("SELECT id FROM tickets WHERE id = ?");
-        $stmt->execute([$ticket_id]);
-        
-        if (!$stmt->fetch()) {
-            $response['message'] = 'Ticket not found';
-            echo json_encode($response);
-            exit;
-        }
-        
-        // Update resolved_at if status is closed
-        $resolved_at = null;
-        if ($status == 2) {
-            $resolved_at = date('Y-m-d H:i:s');
-        }
-        
-        // Update status
-        $stmt = $db->prepare("UPDATE tickets SET status = ?, resolved_at = ? WHERE id = ?");
-        
-        if ($stmt->execute([$status, $resolved_at, $ticket_id])) {
-            $response['success'] = true;
-            $response['message'] = 'Status updated successfully';
-        } else {
-            $response['message'] = 'Failed to update status';
-        }
-    }
-    
-    elseif ($_POST['action'] === 'delete_ticket') {
-        $ticket_id = $_POST['ticket_id'] ?? 0;
-        
-        if (empty($ticket_id)) {
-            $response['message'] = 'Invalid ticket ID';
-            echo json_encode($response);
-            exit;
-        }
-        
-        // Check if ticket exists
-        $stmt = $db->prepare("SELECT id FROM tickets WHERE id = ?");
-        $stmt->execute([$ticket_id]);
-        
-        if (!$stmt->fetch()) {
-            $response['message'] = 'Ticket not found';
-            echo json_encode($response);
-            exit;
-        }
-        
-        // Delete ticket
-        $stmt = $db->prepare("DELETE FROM tickets WHERE id = ?");
-        
-        if ($stmt->execute([$ticket_id])) {
-            $response['success'] = true;
-            $response['message'] = 'Ticket deleted successfully';
-        } else {
-            $response['message'] = 'Failed to delete ticket';
-        }
-    }
-    
-    else {
-        $response['message'] = 'Unknown action';
-    }
+/**
+ * Send a JSON answer with the right HTTP status code, then stop.
+ */
+function jsonResponse($httpCode, $success, $message) {
+    http_response_code($httpCode);
+    echo json_encode(['success' => $success, 'message' => $message]);
+    exit;
 }
 
-echo json_encode($response);
+// 401 in JSON (not a redirect to the login page): the caller is JavaScript
+if (!isAuthenticated()) {
+    jsonResponse(401, false, 'Authentication required');
+}
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    jsonResponse(405, false, 'Method not allowed');
+}
+if (!isCsrfValid()) {
+    jsonResponse(403, false, 'Invalid CSRF token');
+}
+
+$db = getDbConnection();
+$action = $_POST['action'] ?? '';
+
+$ticketId = filter_var($_POST['ticket_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+if ($ticketId === false || $ticketId === null) {
+    jsonResponse(400, false, 'Invalid ticket ID');
+}
+
+$stmt = $db->prepare("SELECT id FROM tickets WHERE id = ?");
+$stmt->execute([$ticketId]);
+if (!$stmt->fetch()) {
+    jsonResponse(404, false, 'Ticket not found');
+}
+
+if ($action === 'update_status') {
+    // Only the three known statuses are accepted: 0 open, 1 in progress, 2 closed
+    $status = filter_var($_POST['status'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0, 'max_range' => 2]]);
+    if ($status === false || $status === null) {
+        jsonResponse(400, false, 'Invalid status');
+    }
+
+    // Closing keeps the original resolution date if there is one; reopening clears it
+    $stmt = $db->prepare(
+        "UPDATE tickets
+         SET status = ?, resolved_at = CASE WHEN ? = 2 THEN COALESCE(resolved_at, NOW()) ELSE NULL END
+         WHERE id = ?"
+    );
+    $stmt->execute([$status, $status, $ticketId]);
+    jsonResponse(200, true, 'Status updated successfully');
+}
+
+if ($action === 'delete_ticket') {
+    $stmt = $db->prepare("DELETE FROM tickets WHERE id = ?");
+    $stmt->execute([$ticketId]);
+    jsonResponse(200, true, 'Ticket deleted successfully');
+}
+
+jsonResponse(400, false, 'Unknown action');

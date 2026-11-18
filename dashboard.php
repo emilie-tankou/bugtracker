@@ -70,7 +70,7 @@ $priority_labels = ['Low', 'Standard', 'High'];
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
 </head>
-<body>
+<body data-csrf="<?php echo escape(csrfToken()); ?>">
     <nav class="navbar">
         <div class="nav-container">
             <div class="nav-brand">

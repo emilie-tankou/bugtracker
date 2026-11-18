@@ -1,9 +1,7 @@
-DROP TABLE IF EXISTS tickets;
-DROP TABLE IF EXISTS categories;
-DROP TABLE IF EXISTS users;
+-- BugTracker : schéma et données de démonstration
+-- À importer UNE SEULE FOIS dans une base vide (phpMyAdmin > Importer, ou : mysql -u root -p bugtracker < database.sql)
 
--- Users table
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     email VARCHAR(150) NOT NULL UNIQUE,
@@ -11,15 +9,13 @@ CREATE TABLE users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Categories table
-CREATE TABLE categories (
+CREATE TABLE IF NOT EXISTS categories (
     id INT AUTO_INCREMENT PRIMARY KEY,
     title VARCHAR(100) NOT NULL UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Tickets table
-CREATE TABLE tickets (
+CREATE TABLE IF NOT EXISTS tickets (
     id INT AUTO_INCREMENT PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
     category_id INT NOT NULL,
@@ -34,27 +30,26 @@ CREATE TABLE tickets (
     FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Insert default data
--- Default user: admin@bugtracker.com / 123456
-INSERT INTO users (name, email, password) VALUES 
-('Admin User', 'admin@bugtracker.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi');
--- Password hash for '123456'
+-- Comptes de démonstration
+-- Connexion : demo@bugtracker.dev / demo-bugtracker
+-- (le second compte sert uniquement d'assigné : il n'a pas de mot de passe utilisable)
+INSERT INTO users (name, email, password) VALUES
+('Demo User', 'demo@bugtracker.dev', '$2y$10$/x2eCad3v2x1iY2gPv0Y2ubkpR6MSHi2KZd0EkFRk8xp6gY95bx/O'),
+('Alex Martin', 'alex@bugtracker.dev', '$2y$10$nW0KtO5N/bD82vpN5Zz/5esE/QpGmCyZa.s39eD/DsYIE6sKmQMiG');
 
--- Insert categories
-INSERT INTO categories (title) VALUES 
+INSERT INTO categories (title) VALUES
 ('Front-end'),
 ('Back-end'),
 ('Infrastructure');
 
--- Insert sample tickets
 INSERT INTO tickets (title, category_id, priority, status, created_by, assigned_to, created_at, resolved_at) VALUES
 ('Login button not working on mobile', 1, 2, 0, 1, NULL, DATE_SUB(NOW(), INTERVAL 5 DAY), NULL),
 ('API endpoint returns 500 error', 2, 2, 1, 1, 1, DATE_SUB(NOW(), INTERVAL 4 DAY), NULL),
-('Server deployment failing', 3, 1, 0, 1, NULL, DATE_SUB(NOW(), INTERVAL 3 DAY), NULL),
-('CSS layout broken in Safari', 1, 1, 2, 1, 1, DATE_SUB(NOW(), INTERVAL 10 DAY), DATE_SUB(NOW(), INTERVAL 2 DAY)),
-('Database connection timeout', 2, 2, 1, 1, 1, DATE_SUB(NOW(), INTERVAL 6 DAY), NULL),
-('Navigation menu disappears on scroll', 1, 0, 0, 1, NULL, DATE_SUB(NOW(), INTERVAL 2 DAY), NULL),
+('Server deployment failing', 3, 1, 0, 2, NULL, DATE_SUB(NOW(), INTERVAL 3 DAY), NULL),
+('CSS layout broken in Safari', 1, 1, 2, 2, 2, DATE_SUB(NOW(), INTERVAL 10 DAY), DATE_SUB(NOW(), INTERVAL 2 DAY)),
+('Database connection timeout', 2, 2, 1, 1, 2, DATE_SUB(NOW(), INTERVAL 6 DAY), NULL),
+('Navigation menu disappears on scroll', 1, 0, 0, 2, NULL, DATE_SUB(NOW(), INTERVAL 2 DAY), NULL),
 ('Memory leak in background process', 2, 1, 1, 1, 1, DATE_SUB(NOW(), INTERVAL 7 DAY), NULL),
-('SSL certificate expired', 3, 2, 2, 1, 1, DATE_SUB(NOW(), INTERVAL 15 DAY), DATE_SUB(NOW(), INTERVAL 1 DAY)),
+('SSL certificate expired', 3, 2, 2, 2, 1, DATE_SUB(NOW(), INTERVAL 15 DAY), DATE_SUB(NOW(), INTERVAL 1 DAY)),
 ('Form validation not displaying errors', 1, 1, 0, 1, NULL, DATE_SUB(NOW(), INTERVAL 1 DAY), NULL),
-('Backup script not running', 3, 0, 0, 1, NULL, DATE_SUB(NOW(), INTERVAL 8 DAY), NULL);
+('Backup script not running', 3, 0, 0, 2, NULL, DATE_SUB(NOW(), INTERVAL 8 DAY), NULL);

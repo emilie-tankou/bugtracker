@@ -9,75 +9,104 @@ $errors = [];
 $ticket = null;
 $is_edit = false;
 
-// Check if editing existing ticket
+// Check if editing an existing ticket
 if (isset($_GET['id'])) {
     $is_edit = true;
-    $stmt = $db->prepare("SELECT * FROM tickets WHERE id = ?");
-    $stmt->execute([$_GET['id']]);
-    $ticket = $stmt->fetch();
-    
+    $ticket_id = filter_var($_GET['id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+
+    if ($ticket_id !== false) {
+        $stmt = $db->prepare("SELECT * FROM tickets WHERE id = ?");
+        $stmt->execute([$ticket_id]);
+        $ticket = $stmt->fetch();
+    }
+
     if (!$ticket) {
         header('Location: dashboard.php');
         exit;
     }
 }
 
+// Reference data for the selects (also used to validate what the browser sends)
+$categories = $db->query("SELECT * FROM categories ORDER BY title")->fetchAll();
+$users = $db->query("SELECT id, name FROM users ORDER BY name")->fetchAll();
+$category_ids = array_column($categories, 'id');
+$user_ids = array_column($users, 'id');
+
+// Values shown in the form: what was just posted, otherwise the saved ticket, otherwise defaults
+$form = [
+    'title'       => $_POST['title']       ?? $ticket['title']       ?? '',
+    'category_id' => $_POST['category_id'] ?? $ticket['category_id'] ?? '',
+    'priority'    => $_POST['priority']    ?? $ticket['priority']    ?? '1',
+    'status'      => $_POST['status']      ?? $ticket['status']      ?? '0',
+    'assigned_to' => $_POST['assigned_to'] ?? $ticket['assigned_to'] ?? '',
+];
+
+/** True when two form values are the same (compared as strings: "0" must match 0). */
+function isSelected($current, $value) {
+    return (string) $current === (string) $value;
+}
+
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $title = trim($_POST['title'] ?? '');
-    $category_id = $_POST['category_id'] ?? '';
-    $priority = $_POST['priority'] ?? '';
-    $status = $_POST['status'] ?? '';
-    $assigned_to = $_POST['assigned_to'] ?? null;
-    
-    // Validate inputs
-    if (empty($title)) {
+    if (!isCsrfValid()) {
+        $errors[] = "Your session has expired, please try again";
+    }
+
+    $title = trim($form['title']);
+    if ($title === '') {
         $errors[] = "Title is required";
+    } elseif (mb_strlen($title) > 255) {
+        $errors[] = "Title must be 255 characters or fewer";
     }
-    
-    if (empty($category_id)) {
-        $errors[] = "Category is required";
+
+    $category_id = filter_var($form['category_id'], FILTER_VALIDATE_INT);
+    if ($category_id === false || !in_array($category_id, $category_ids)) {
+        $errors[] = "Please choose a valid category";
     }
-    
-    if ($priority === '') {
-        $errors[] = "Priority is required";
+
+    $priority = filter_var($form['priority'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 0, 'max_range' => 2]]);
+    if ($priority === false) {
+        $errors[] = "Please choose a valid priority";
     }
-    
-    if ($status === '') {
-        $errors[] = "Status is required";
+
+    $status = filter_var($form['status'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 0, 'max_range' => 2]]);
+    if ($status === false) {
+        $errors[] = "Please choose a valid status";
     }
-    
-    if (empty($assigned_to)) {
-        $assigned_to = null;
+
+    $assigned_to = null;
+    if ($form['assigned_to'] !== '') {
+        $assigned_to = filter_var($form['assigned_to'], FILTER_VALIDATE_INT);
+        if ($assigned_to === false || !in_array($assigned_to, $user_ids)) {
+            $errors[] = "Please choose a valid assignee";
+        }
     }
-    
-    // Process resolved_at date
-    $resolved_at = null;
-    if ($status == 2) { // Closed status
-        $resolved_at = date('Y-m-d H:i:s');
-    }
-    
+
     if (empty($errors)) {
+        // A closed ticket keeps its original resolution date; any other status clears it
+        $resolved_at = null;
+        if ($status === 2) {
+            $resolved_at = ($is_edit && !empty($ticket['resolved_at'])) ? $ticket['resolved_at'] : date('Y-m-d H:i:s');
+        }
+
         if ($is_edit) {
-            // Update existing ticket
-            $sql = "UPDATE tickets SET 
-                    title = ?, 
-                    category_id = ?, 
-                    priority = ?, 
-                    status = ?, 
+            $sql = "UPDATE tickets SET
+                    title = ?,
+                    category_id = ?,
+                    priority = ?,
+                    status = ?,
                     assigned_to = ?,
                     resolved_at = ?
                     WHERE id = ?";
             $stmt = $db->prepare($sql);
             $result = $stmt->execute([$title, $category_id, $priority, $status, $assigned_to, $resolved_at, $ticket['id']]);
         } else {
-            // Create new ticket
-            $sql = "INSERT INTO tickets (title, category_id, priority, status, created_by, assigned_to, resolved_at) 
+            $sql = "INSERT INTO tickets (title, category_id, priority, status, created_by, assigned_to, resolved_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?)";
             $stmt = $db->prepare($sql);
             $result = $stmt->execute([$title, $category_id, $priority, $status, $user['id'], $assigned_to, $resolved_at]);
         }
-        
+
         if ($result) {
             header('Location: dashboard.php');
             exit;
@@ -86,10 +115,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
-
-// Get categories and users
-$categories = $db->query("SELECT * FROM categories ORDER BY title")->fetchAll();
-$users = $db->query("SELECT id, name FROM users ORDER BY name")->fetchAll();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -117,7 +142,7 @@ $users = $db->query("SELECT id, name FROM users ORDER BY name")->fetchAll();
         <div class="container">
             <div class="form-container">
                 <h1><?php echo $is_edit ? 'Edit Ticket' : 'Create New Ticket'; ?></h1>
-                
+
                 <?php if (!empty($errors)): ?>
                     <div class="alert alert-error">
                         <ul>
@@ -127,69 +152,69 @@ $users = $db->query("SELECT id, name FROM users ORDER BY name")->fetchAll();
                         </ul>
                     </div>
                 <?php endif; ?>
-                
+
                 <form method="POST" action="" class="ticket-form">
+                    <?php echo csrfField(); ?>
                     <div class="form-group">
                         <label for="title">Title *</label>
-                        <input 
-                            type="text" 
-                            id="title" 
-                            name="title" 
-                            value="<?php echo escape($ticket['title'] ?? $_POST['title'] ?? ''); ?>"
+                        <input
+                            type="text"
+                            id="title"
+                            name="title"
+                            maxlength="255"
+                            value="<?php echo escape($form['title']); ?>"
                             required
                         >
                     </div>
-                    
+
                     <div class="form-row">
                         <div class="form-group">
                             <label for="category_id">Category *</label>
                             <select id="category_id" name="category_id" required>
                                 <option value="">Select a category</option>
                                 <?php foreach ($categories as $category): ?>
-                                    <option value="<?php echo $category['id']; ?>" 
-                                        <?php echo ($ticket['category_id'] ?? $_POST['category_id'] ?? '') == $category['id'] ? 'selected' : ''; ?>>
+                                    <option value="<?php echo (int) $category['id']; ?>"
+                                        <?php echo isSelected($form['category_id'], $category['id']) ? 'selected' : ''; ?>>
                                         <?php echo escape($category['title']); ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="priority">Priority *</label>
                             <select id="priority" name="priority" required>
-                                <option value="">Select priority</option>
-                                <option value="0" <?php echo ($ticket['priority'] ?? $_POST['priority'] ?? '') === '0' ? 'selected' : ''; ?>>Low</option>
-                                <option value="1" <?php echo ($ticket['priority'] ?? $_POST['priority'] ?? '1') == '1' ? 'selected' : ''; ?>>Standard</option>
-                                <option value="2" <?php echo ($ticket['priority'] ?? $_POST['priority'] ?? '') == '2' ? 'selected' : ''; ?>>High</option>
+                                <option value="0" <?php echo isSelected($form['priority'], 0) ? 'selected' : ''; ?>>Low</option>
+                                <option value="1" <?php echo isSelected($form['priority'], 1) ? 'selected' : ''; ?>>Standard</option>
+                                <option value="2" <?php echo isSelected($form['priority'], 2) ? 'selected' : ''; ?>>High</option>
                             </select>
                         </div>
                     </div>
-                    
+
                     <div class="form-row">
                         <div class="form-group">
                             <label for="status">Status *</label>
                             <select id="status" name="status" required>
-                                <option value="">Select status</option>
-                                <option value="0" <?php echo ($ticket['status'] ?? $_POST['status'] ?? '0') === '0' || ($ticket['status'] ?? $_POST['status'] ?? '0') == '0' ? 'selected' : ''; ?>>Open</option>
-                                <option value="1" <?php echo ($ticket['status'] ?? $_POST['status'] ?? '') == '1' ? 'selected' : ''; ?>>In Progress</option>
-                                <option value="2" <?php echo ($ticket['status'] ?? $_POST['status'] ?? '') == '2' ? 'selected' : ''; ?>>Closed</option>
+                                <option value="0" <?php echo isSelected($form['status'], 0) ? 'selected' : ''; ?>>Open</option>
+                                <option value="1" <?php echo isSelected($form['status'], 1) ? 'selected' : ''; ?>>In Progress</option>
+                                <option value="2" <?php echo isSelected($form['status'], 2) ? 'selected' : ''; ?>>Closed</option>
                             </select>
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="assigned_to">Assigned To</label>
                             <select id="assigned_to" name="assigned_to">
                                 <option value="">Unassigned</option>
                                 <?php foreach ($users as $u): ?>
-                                    <option value="<?php echo $u['id']; ?>" 
-                                        <?php echo ($ticket['assigned_to'] ?? $_POST['assigned_to'] ?? '') == $u['id'] ? 'selected' : ''; ?>>
+                                    <option value="<?php echo (int) $u['id']; ?>"
+                                        <?php echo isSelected($form['assigned_to'], $u['id']) ? 'selected' : ''; ?>>
                                         <?php echo escape($u['name']); ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
                     </div>
-                    
+
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary btn-large">Save Ticket</button>
                         <a href="dashboard.php" class="btn btn-secondary btn-large">Cancel</a>

@@ -1,30 +1,40 @@
 <?php
 /**
- * Database configuration file
- * Update these values according to your hosting environment
+ * Application configuration.
+ *
+ * Database credentials are NOT stored in this file: they come from
+ * config.local.php (ignored by Git, see config.local.example.php)
+ * or from environment variables. Defaults match a local XAMPP install.
  */
 
-// Database connection parameters
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'bugtracker');
-define('DB_USER', 'root');
-define('DB_PASS', '');
+$localConfig = __DIR__ . '/config.local.php';
+if (is_file($localConfig)) {
+    require $localConfig;
+}
+
+defined('DB_HOST') || define('DB_HOST', getenv('DB_HOST') ?: 'localhost');
+defined('DB_NAME') || define('DB_NAME', getenv('DB_NAME') ?: 'bugtracker');
+defined('DB_USER') || define('DB_USER', getenv('DB_USER') ?: 'root');
+defined('DB_PASS') || define('DB_PASS', getenv('DB_PASS') !== false ? getenv('DB_PASS') : '');
 define('DB_CHARSET', 'utf8mb4');
 
-// Application configuration
-define('BASE_URL', 'http://localhost/projetbt/bugtracker');
 define('SITE_NAME', 'BugTracker');
 
-// Session configuration
-ini_set('session.cookie_httponly', 1);
+// Session hardening: HttpOnly cookie, Secure over HTTPS, SameSite=Lax
+$isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+    || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+ini_set('session.use_strict_mode', 1);
 ini_set('session.use_only_cookies', 1);
-ini_set('session.cookie_secure', 0); // Set to 1 if using HTTPS
+session_set_cookie_params([
+    'httponly' => true,
+    'secure'   => $isHttps,
+    'samesite' => 'Lax',
+]);
 session_start();
 
 /**
- * Get database connection using PDO
- * @return PDO Database connection object
- * @throws PDOException If connection fails
+ * Get database connection using PDO (real prepared statements)
+ * @return PDO
  */
 function getDbConnection() {
     try {
@@ -34,17 +44,18 @@ function getDbConnection() {
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES => false,
         ];
-        
+
         return new PDO($dsn, DB_USER, DB_PASS, $options);
     } catch (PDOException $e) {
         error_log("Database connection error: " . $e->getMessage());
+        http_response_code(500);
         die("Connection failed. Please contact administrator.");
     }
 }
 
 /**
  * Check if user is authenticated
- * @return bool True if user is logged in
+ * @return bool
  */
 function isAuthenticated() {
     return isset($_SESSION['user_id']);
@@ -72,24 +83,55 @@ function requireGuest() {
 
 /**
  * Get current user data
- * @return array|null User data or null if not authenticated
+ * @return array|null
  */
 function getCurrentUser() {
     if (!isAuthenticated()) {
         return null;
     }
-    
+
     $db = getDbConnection();
     $stmt = $db->prepare("SELECT id, name, email FROM users WHERE id = ?");
     $stmt->execute([$_SESSION['user_id']]);
-    return $stmt->fetch();
+    $user = $stmt->fetch();
+
+    // The account may have been deleted since the session was opened
+    if (!$user) {
+        $_SESSION = [];
+        session_destroy();
+        header('Location: login.php');
+        exit;
+    }
+
+    return $user;
 }
 
 /**
- * Sanitize output to prevent XSS
- * @param string $text Text to sanitize
- * @return string Sanitized text
+ * Escape output to prevent XSS
+ * @param mixed $text
+ * @return string
  */
 function escape($text) {
-    return htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
+    return htmlspecialchars((string) $text, ENT_QUOTES, 'UTF-8');
+}
+
+/**
+ * CSRF protection: one random token per session, sent with every POST
+ */
+function csrfToken() {
+    if (empty($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+function csrfField() {
+    return '<input type="hidden" name="csrf_token" value="' . escape(csrfToken()) . '">';
+}
+
+function isCsrfValid() {
+    $sent = $_POST['csrf_token'] ?? '';
+    return is_string($sent)
+        && !empty($_SESSION['csrf_token'])
+        && hash_equals($_SESSION['csrf_token'], $sent);
 }
